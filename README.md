@@ -1,6 +1,6 @@
 # storage_device
 
-[![Travis Build](https://img.shields.io/travis/sunriseos/storage_device.svg?logo=travis)](https://travis-ci.com/sunriseos/storage_device) [![Dependabot Status](https://api.dependabot.com/badges/status?host=github&repo=sunriseos/storage_device)](https://dependabot.com)
+[![Travis Build](https://img.shields.io/travis/com/sunriseos/storage_device.svg?logo=travis)](https://travis-ci.com/sunriseos/storage_device) [![Dependabot Status](https://api.dependabot.com/badges/status?host=github&repo=sunriseos/storage_device)](https://dependabot.com)
 
 A storage device representation to help filesystem development.
 
