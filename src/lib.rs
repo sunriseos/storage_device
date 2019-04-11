@@ -49,6 +49,8 @@ impl From<BlockError> for StorageDeviceError {
 }
 
 /// Implementation of storage device for block device.
+/// NOTE: This implementation doesn't use the heap.
+/// NOTE: As it doesn't use a heap, read/write operations are done block by block. If you wish better performances, please consider implementing your own wrapper.
 pub struct StorageBlockDevice<B: BlockDevice> {
     /// The inner block device.
     block_device: B,
