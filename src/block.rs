@@ -145,7 +145,7 @@ impl<B: BlockDevice> CachedBlockDevice<B> {
         for (index, block) in self.lru_cache.lock().iter_mut() {
             if block.dirty {
                 self.block_device
-                    .raw_write(core::slice::from_ref(&block.data), *index)?;
+                    .write(core::slice::from_ref(&block.data), *index)?;
                 block.dirty = false;
             }
         }
@@ -187,7 +187,7 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
 
         if !fully_cached {
             // we must read from device
-            self.block_device.raw_read(blocks, index)?
+            self.block_device.read(blocks, index)?
         }
 
         // update from/to cache
@@ -207,7 +207,7 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
                     let (evicted_index, evicted_block) = lru.pop_lru().unwrap();
                     if evicted_block.dirty {
                         self.block_device
-                            .raw_write(core::slice::from_ref(&evicted_block.data), evicted_index)?;
+                            .write(core::slice::from_ref(&evicted_block.data), evicted_index)?;
                     }
                 }
                 let new_cached_block = CachedBlock {
@@ -241,7 +241,7 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
                     let (evicted_index, evicted_block) = lru.pop_lru().unwrap();
                     if evicted_block.dirty {
                         self.block_device
-                            .raw_write(core::slice::from_ref(&evicted_block.data), evicted_index)?;
+                            .write(core::slice::from_ref(&evicted_block.data), evicted_index)?;
                     }
                 }
                 lru.put(BlockIndex(index.0 + i as u64), new_block);
@@ -255,11 +255,11 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
                     && !(index >= *evicted_index && index < BlockIndex(evicted_index.0 + blocks.len() as u64))
                 {
                     self.block_device
-                        .raw_write(core::slice::from_ref(&evicted_block.data), *evicted_index)?;
+                        .write(core::slice::from_ref(&evicted_block.data), *evicted_index)?;
                 }
             }
             // write in one go
-            self.block_device.raw_write(blocks, index)?;
+            self.block_device.write(blocks, index)?;
             // add first `cap` blocks to cache
             for (i, block) in blocks.iter().take(lru.cap()).enumerate() {
                 lru.put(

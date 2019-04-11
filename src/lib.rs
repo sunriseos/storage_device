@@ -11,13 +11,13 @@ pub use block::*;
 /// Represent a storage device error.
 #[derive(Debug)]
 pub enum StorageDeviceError {
-    /// Read error
+    /// Read error.
     ReadError,
 
-    /// Write error
+    /// Write error.
     WriteError,
 
-    /// Unknown error
+    /// Unknown error.
     Unknown,
 }
 
