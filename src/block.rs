@@ -92,10 +92,10 @@ impl BlockCount {
 /// Represent a device holding blocks.
 pub trait BlockDevice: Sized {
     /// Read blocks from the block device starting at the given ``index``.
-    fn read(&self, blocks: &mut [Block], index: BlockIndex) -> BlockResult<()>;
+    fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> BlockResult<()>;
 
     /// Write blocks to the block device starting at the given ``index``.
-    fn write(&self, blocks: &[Block], index: BlockIndex) -> BlockResult<()>;
+    fn write(&mut self, blocks: &[Block], index: BlockIndex) -> BlockResult<()>;
 
     /// Return the amount of blocks hold by the block device.
     fn count(&self) -> BlockResult<BlockCount>;
@@ -113,7 +113,7 @@ pub struct CachedBlockDevice<B: BlockDevice> {
     block_device: B,
 
     /// The LRU cache.
-    lru_cache: spin::Mutex<lru::LruCache<BlockIndex, CachedBlock>>,
+    lru_cache: lru::LruCache<BlockIndex, CachedBlock>,
 }
 
 /// Represent a cached block in the LRU cache.
@@ -131,7 +131,7 @@ impl<B: BlockDevice> CachedBlockDevice<B> {
     pub fn new(device: B, cap: usize) -> CachedBlockDevice<B> {
         CachedBlockDevice {
             block_device: device,
-            lru_cache: spin::Mutex::new(lru::LruCache::new(cap)),
+            lru_cache: lru::LruCache::new(cap),
         }
     }
 
@@ -141,8 +141,8 @@ impl<B: BlockDevice> CachedBlockDevice<B> {
     /// and update dirty blocks as now non-dirty.
     ///
     /// This function has no effect on lru order.
-    pub fn flush(&self) -> BlockResult<()> {
-        for (index, block) in self.lru_cache.lock().iter_mut() {
+    pub fn flush(&mut self) -> BlockResult<()> {
+        for (index, block) in self.lru_cache.iter_mut() {
             if block.dirty {
                 self.block_device
                     .write(core::slice::from_ref(&block.data), *index)?;
@@ -168,17 +168,16 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
     /// Attempts to fill `blocks` with blocks found in the cache, and will fetch them from device if it can't.
     ///
     /// Will update the access time of every block involved.
-    fn read(&self, blocks: &mut [Block], index: BlockIndex) -> BlockResult<()> {
-        let mut lru = self.lru_cache.lock();
+    fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> BlockResult<()> {
         // check if we can satisfy the request only from what we have in cache
         let mut fully_cached = true;
-        if blocks.len() > lru.len() {
+        if blocks.len() > self.lru_cache.len() {
             // requested more blocks that cache is holding
             fully_cached = false
         } else {
             // check each block is found in the cache
             for i in 0..blocks.len() {
-                if !lru.contains(&BlockIndex(index.0 + i as u64)) {
+                if !self.lru_cache.contains(&BlockIndex(index.0 + i as u64)) {
                     fully_cached = false;
                     break;
                 }
@@ -192,7 +191,7 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
 
         // update from/to cache
         for (i, block) in blocks.iter_mut().enumerate() {
-            if let Some(cached_block) = lru.get(&BlockIndex(index.0 + i as u64)) {
+            if let Some(cached_block) = self.lru_cache.get(&BlockIndex(index.0 + i as u64)) {
                 // block was found in cache, its access time was updated.
                 if fully_cached || cached_block.dirty {
                     // fully_cached: block[i] is uninitialized, copy it from cache.
@@ -203,8 +202,8 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
             } else {
                 // add the block we just read to the cache.
                 // if cache is full, flush its lru entry
-                if lru.len() == lru.cap() {
-                    let (evicted_index, evicted_block) = lru.pop_lru().unwrap();
+                if self.lru_cache.len() == self.lru_cache.cap() {
+                    let (evicted_index, evicted_block) = self.lru_cache.pop_lru().unwrap();
                     if evicted_block.dirty {
                         self.block_device
                             .write(core::slice::from_ref(&evicted_block.data), evicted_index)?;
@@ -214,7 +213,7 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
                     dirty: false,
                     data: block.clone(),
                 };
-                lru.put(BlockIndex(index.0 + i as u64), new_cached_block);
+                self.lru_cache.put(BlockIndex(index.0 + i as u64), new_cached_block);
             }
         }
         Ok(())
@@ -226,10 +225,8 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
     ///
     /// When the cache is full, least recently used blocks will be evicted and written to device.
     /// This operation may fail, and this function will return an error when it happens.
-    fn write(&self, blocks: &[Block], index: BlockIndex) -> BlockResult<()> {
-        let mut lru = self.lru_cache.lock();
-
-        if blocks.len() < lru.cap() {
+    fn write(&mut self, blocks: &[Block], index: BlockIndex) -> BlockResult<()> {
+        if blocks.len() < self.lru_cache.cap() {
             for (i, block) in blocks.iter().enumerate() {
                 let new_block = CachedBlock {
                     dirty: true,
@@ -237,19 +234,19 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
                 };
                 // add it to the cache
                 // if cache is full, flush its lru entry
-                if lru.len() == lru.cap() {
-                    let (evicted_index, evicted_block) = lru.pop_lru().unwrap();
+                if self.lru_cache.len() == self.lru_cache.cap() {
+                    let (evicted_index, evicted_block) = self.lru_cache.pop_lru().unwrap();
                     if evicted_block.dirty {
                         self.block_device
                             .write(core::slice::from_ref(&evicted_block.data), evicted_index)?;
                     }
                 }
-                lru.put(BlockIndex(index.0 + i as u64), new_block);
+                self.lru_cache.put(BlockIndex(index.0 + i as u64), new_block);
             }
         } else {
             // we're performing a big write, that will evict all cache blocks.
             // evict it in one go, and repopulate with the first `cap` blocks from `blocks`.
-            for (evicted_index, evicted_block) in lru.iter() {
+            for (evicted_index, evicted_block) in self.lru_cache.iter() {
                 if evicted_block.dirty
                     // if evicted block is `blocks`, don't bother writing it as we're about to re-write it anyway.
                     && !(index >= *evicted_index && index < BlockIndex(evicted_index.0 + blocks.len() as u64))
@@ -261,8 +258,8 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
             // write in one go
             self.block_device.write(blocks, index)?;
             // add first `cap` blocks to cache
-            for (i, block) in blocks.iter().take(lru.cap()).enumerate() {
-                lru.put(
+            for (i, block) in blocks.iter().take(self.lru_cache.cap()).enumerate() {
+                self.lru_cache.put(
                     BlockIndex(index.0 + i as u64),
                     CachedBlock {
                         dirty: false,

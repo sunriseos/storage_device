@@ -14,7 +14,6 @@ features = ["cached-block-device"]
 
 [dependencies]
 lru = { git = "https://github.com/Orycterope/lru-rs", branch = "no_std", features = ["nightly"], optional = true }
-spin = { version = "0.5.0", optional = true }
 
 [features]
-cached-block-device = ["lru", "spin"]
+cached-block-device = ["lru"]
