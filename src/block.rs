@@ -275,3 +275,40 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
         self.block_device.count()
     }
 }
+
+#[cfg(test)]
+impl BlockDevice for std::fs::File {
+
+    /// Seeks to the appropriate position, and reads block by block.
+    fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> BlockResult<()> {
+        use std::io::{Read, Seek};
+
+        self.seek(std::io::SeekFrom::Start(index.into_offset()))
+            .map_err(|_| BlockError::ReadError)?;
+        for block in blocks.iter_mut() {
+            self.read_exact(&mut block.contents)
+                .map_err(|_| BlockError::ReadError)?;
+        }
+        Ok(())
+    }
+
+    /// Seeks to the appropriate position, and writes block by block.
+    fn write(&mut self, blocks: &[Block], index: BlockIndex) -> BlockResult<()> {
+        use std::io::{Write, Seek};
+
+        self.seek(std::io::SeekFrom::Start(index.into_offset()))
+            .map_err(|_| BlockError::ReadError)?;
+        for block in blocks.iter() {
+            self.write_all(&block.contents)
+                .map_err(|_| BlockError::WriteError)?;
+        }
+        Ok(())
+    }
+
+    fn count(&self) -> BlockResult<BlockCount> {
+        let num_blocks = self.metadata()
+            .map_err(|_| BlockError::Unknown)?
+            .len() / (Block::LEN_U64);
+        Ok(BlockCount(num_blocks))
+    }
+}

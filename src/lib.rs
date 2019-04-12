@@ -3,6 +3,9 @@
 
 #![no_std]
 
+#[cfg(test)]
+extern crate std;
+
 /// Block device representation.
 pub mod block;
 
