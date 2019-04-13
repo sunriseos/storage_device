@@ -3,7 +3,7 @@
 
 #![no_std]
 
-#[cfg(test)]
+#[cfg(feature = "std")]
 extern crate std;
 
 /// Block device representation.

@@ -13,7 +13,20 @@ edition = "2018"
 features = ["cached-block-device"]
 
 [dependencies]
-lru = { git = "https://github.com/Orycterope/lru-rs", branch = "no_std", features = ["nightly"], optional = true }
+lru = { version = "0.1.15", optional = true }
 
 [features]
-cached-block-device = ["lru"]
+default = ["std"]
+# Link with std.
+# This feature adds implementation of BlockDevice for std::fs::File.
+#
+# Usually used for testing.
+std = []
+# This feature adds the CachedBlockDevice wrapper around any BlockDevice.
+# Uses the `lru` crate to manage its cache.
+#
+# Implies feature `std`.
+cached-block-device = ["std", "lru"]
+# Mutually exclusive with the `std` feature, as this would require to disable "lru/nightly" when built with std,
+# but cargo does not provide any way to do conditionnal feature definitions.
+cached-block-device-nightly = ["lru/nightly"]

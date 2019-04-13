@@ -107,7 +107,7 @@ pub trait BlockDevice: Sized {
 /// flushing, or when they are evicted from the cache.
 ///
 /// When a CachedBlockDevice is dropped, it flushes its cache.
-#[cfg(feature = "cached-block-device")]
+#[cfg(any(feature = "cached-block-device", feature = "cached-block-device-nightly"))]
 pub struct CachedBlockDevice<B: BlockDevice> {
     /// The inner block device.
     block_device: B,
@@ -117,7 +117,7 @@ pub struct CachedBlockDevice<B: BlockDevice> {
 }
 
 /// Represent a cached block in the LRU cache.
-#[cfg(feature = "cached-block-device")]
+#[cfg(any(feature = "cached-block-device", feature = "cached-block-device-nightly"))]
 struct CachedBlock {
     /// Bool indicating whether this block should be written to device when flushing.
     dirty: bool,
@@ -125,7 +125,7 @@ struct CachedBlock {
     data: Block,
 }
 
-#[cfg(feature = "cached-block-device")]
+#[cfg(any(feature = "cached-block-device", feature = "cached-block-device-nightly"))]
 impl<B: BlockDevice> CachedBlockDevice<B> {
     /// Creates a new CachedBlockDevice that wraps `device`, and can hold at most `cap` blocks in cache.
     pub fn new(device: B, cap: usize) -> CachedBlockDevice<B> {
@@ -153,7 +153,7 @@ impl<B: BlockDevice> CachedBlockDevice<B> {
     }
 }
 
-#[cfg(feature = "cached-block-device")]
+#[cfg(any(feature = "cached-block-device", feature = "cached-block-device-nightly"))]
 impl<B: BlockDevice> Drop for CachedBlockDevice<B> {
     /// Dropping a CachedBlockDevice flushes it.
     ///
@@ -163,7 +163,7 @@ impl<B: BlockDevice> Drop for CachedBlockDevice<B> {
     }
 }
 
-#[cfg(feature = "cached-block-device")]
+#[cfg(any(feature = "cached-block-device", feature = "cached-block-device-nightly"))]
 impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
     /// Attempts to fill `blocks` with blocks found in the cache, and will fetch them from device if it can't.
     ///
@@ -276,7 +276,7 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
     }
 }
 
-#[cfg(test)]
+#[cfg(feature = "std")]
 impl BlockDevice for std::fs::File {
 
     /// Seeks to the appropriate position, and reads block by block.
