@@ -51,22 +51,11 @@ impl From<BlockError> for StorageDeviceError {
     }
 }
 
-/// Implementation of storage device for block device.
+/// Blanket implementation of StorageDevice for every type that implements BlockDevice.
+///
 /// NOTE: This implementation doesn't use the heap.
 /// NOTE: As it doesn't use a heap, read/write operations are done block by block. If you wish better performances, please consider implementing your own wrapper.
-pub struct StorageBlockDevice<B: BlockDevice> {
-    /// The inner block device.
-    block_device: B,
-}
-
-impl<B: BlockDevice> StorageBlockDevice<B> {
-    /// Create a new storage block device.
-    pub fn new(block_device: B) -> Self {
-        StorageBlockDevice { block_device }
-    }
-}
-
-impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
+impl<B: BlockDevice> StorageDevice for B {
     fn read(&mut self, offset: u64, buf: &mut [u8]) -> StorageDeviceResult<()> {
         let mut read_size = 0u64;
         let mut blocks = [Block::new()];
@@ -82,7 +71,7 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
             let current_block_offset = current_offset % Block::LEN_U64;
 
             // Read the block.
-            self.block_device.read(&mut blocks, BlockIndex(current_block_index.0))?;
+            BlockDevice::read(self, &mut blocks, BlockIndex(current_block_index.0))?;
 
             // Slice on the part of the buffer we need.
             let buf_slice = &mut buf[read_size as usize..];
@@ -121,7 +110,7 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
             let current_block_offset = current_offset % Block::LEN_U64;
 
             // Read the block.
-            self.block_device.read(&mut blocks, BlockIndex(current_block_index.0))?;
+            BlockDevice::read(self, &mut blocks, BlockIndex(current_block_index.0))?;
 
             // Slice on the part of the buffer we need.
             let buf_slice = &buf[write_size as usize..];
@@ -140,7 +129,7 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
                 *buf_entry = buf_slice[index];
             }
 
-            self.block_device.write(&blocks, BlockIndex(current_block_index.0))?;
+            BlockDevice::write(self, &blocks, BlockIndex(current_block_index.0))?;
 
             // Increment with what we wrote.
             write_size += buf_limit as u64;
@@ -150,6 +139,6 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
     }
 
     fn len(&self) -> StorageDeviceResult<u64> {
-        Ok(self.block_device.count()?.into_bytes_count())
+        Ok(BlockDevice::count(self)?.into_bytes_count())
     }
 }
