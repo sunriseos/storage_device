@@ -312,3 +312,40 @@ impl BlockDevice for std::fs::File {
         Ok(BlockCount(num_blocks))
     }
 }
+
+#[cfg(feature = "std")]
+use crate::{StorageDevice, StorageDeviceResult, StorageDeviceError};
+
+#[cfg(feature = "std")]
+impl StorageDevice for std::fs::File {
+    /// Read the data at the given ``offset`` in the storage device into a given buffer.
+    fn read(&mut self, offset: u64, buf: &mut [u8]) -> StorageDeviceResult<()> {
+        use std::io::{Read, Seek};
+
+        self.seek(std::io::SeekFrom::Start(offset))
+            .map_err(|_| BlockError::ReadError)?;
+        self.read_exact(buf)
+            .map_err(|_| BlockError::ReadError)?;
+        Ok(())
+    }
+
+    /// Write the data from the given buffer at the given ``offset`` in the storage device.
+    fn write(&mut self, offset: u64, buf: &[u8]) -> StorageDeviceResult<()> {
+        use std::io::{Write, Seek};
+
+        self.seek(std::io::SeekFrom::Start(offset))
+            .map_err(|_| BlockError::WriteError)?;
+        self.write_all(buf)
+            .map_err(|_| BlockError::WriteError)?;
+        Ok(())
+    }
+
+    /// Return the total size of the storage device.
+    fn len(&self) -> StorageDeviceResult<u64> {
+        Ok(
+            self.metadata()
+                .map_err(|_| StorageDeviceError::Unknown)?
+                .len()
+        )
+    }
+}

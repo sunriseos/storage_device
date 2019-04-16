@@ -37,7 +37,7 @@ pub trait StorageDevice {
     /// Write the data from the given buffer at the given ``offset`` in the storage device.
     fn write(&mut self, offset: u64, buf: &[u8]) -> StorageDeviceResult<()>;
 
-    /// Return the total size of the storage device.
+    /// Return the total size of the storage device in bytes.
     fn len(&self) -> StorageDeviceResult<u64>;
 }
 
