@@ -38,7 +38,7 @@ pub trait StorageDevice {
     fn write(&mut self, offset: u64, buf: &[u8]) -> StorageDeviceResult<()>;
 
     /// Return the total size of the storage device in bytes.
-    fn len(&self) -> StorageDeviceResult<u64>;
+    fn len(&mut self) -> StorageDeviceResult<u64>;
 }
 
 impl From<BlockError> for StorageDeviceError {
@@ -149,7 +149,7 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
         Ok(())
     }
 
-    fn len(&self) -> StorageDeviceResult<u64> {
+    fn len(&mut self) -> StorageDeviceResult<u64> {
         Ok(self.block_device.count()?.into_bytes_count())
     }
 }

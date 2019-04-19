@@ -98,7 +98,7 @@ pub trait BlockDevice: Sized {
     fn write(&mut self, blocks: &[Block], index: BlockIndex) -> BlockResult<()>;
 
     /// Return the amount of blocks hold by the block device.
-    fn count(&self) -> BlockResult<BlockCount>;
+    fn count(&mut self) -> BlockResult<BlockCount>;
 }
 
 /// A BlockDevice that reduces device accesses by keeping the most recently used blocks in a cache.
@@ -305,7 +305,7 @@ impl BlockDevice for std::fs::File {
         Ok(())
     }
 
-    fn count(&self) -> BlockResult<BlockCount> {
+    fn count(&mut self) -> BlockResult<BlockCount> {
         let num_blocks = self.metadata()
             .map_err(|_| BlockError::Unknown)?
             .len() / (Block::LEN_U64);
@@ -341,7 +341,7 @@ impl StorageDevice for std::fs::File {
     }
 
     /// Return the total size of the storage device.
-    fn len(&self) -> StorageDeviceResult<u64> {
+    fn len(&mut self) -> StorageDeviceResult<u64> {
         Ok(
             self.metadata()
                 .map_err(|_| StorageDeviceError::Unknown)?
