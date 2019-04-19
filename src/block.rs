@@ -271,7 +271,7 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
         Ok(())
     }
 
-    fn count(&self) -> BlockResult<BlockCount> {
+    fn count(&mut self) -> BlockResult<BlockCount> {
         self.block_device.count()
     }
 }
