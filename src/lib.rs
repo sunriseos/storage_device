@@ -3,6 +3,9 @@
 
 #![no_std]
 
+#[cfg(feature = "std")]
+extern crate std;
+
 /// Block device representation.
 pub mod block;
 
@@ -29,13 +32,13 @@ pub type StorageDeviceResult<T> = core::result::Result<T, StorageDeviceError>;
 #[allow(clippy::len_without_is_empty)]
 pub trait StorageDevice {
     /// Read the data at the given ``offset`` in the storage device into a given buffer.
-    fn read(&self, offset: u64, buf: &mut [u8]) -> StorageDeviceResult<()>;
+    fn read(&mut self, offset: u64, buf: &mut [u8]) -> StorageDeviceResult<()>;
 
     /// Write the data from the given buffer at the given ``offset`` in the storage device.
-    fn write(&self, offset: u64, buf: &[u8]) -> StorageDeviceResult<()>;
+    fn write(&mut self, offset: u64, buf: &[u8]) -> StorageDeviceResult<()>;
 
-    /// Return the total size of the storage device.
-    fn len(&self) -> StorageDeviceResult<u64>;
+    /// Return the total size of the storage device in bytes.
+    fn len(&mut self) -> StorageDeviceResult<u64>;
 }
 
 impl From<BlockError> for StorageDeviceError {
@@ -64,7 +67,7 @@ impl<B: BlockDevice> StorageBlockDevice<B> {
 }
 
 impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
-    fn read(&self, offset: u64, buf: &mut [u8]) -> StorageDeviceResult<()> {
+    fn read(&mut self, offset: u64, buf: &mut [u8]) -> StorageDeviceResult<()> {
         let mut read_size = 0u64;
         let mut blocks = [Block::new()];
 
@@ -103,7 +106,7 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
         Ok(())
     }
 
-    fn write(&self, offset: u64, buf: &[u8]) -> StorageDeviceResult<()> {
+    fn write(&mut self, offset: u64, buf: &[u8]) -> StorageDeviceResult<()> {
         let mut write_size = 0u64;
         let mut blocks = [Block::new()];
 
@@ -146,7 +149,7 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
         Ok(())
     }
 
-    fn len(&self) -> StorageDeviceResult<u64> {
+    fn len(&mut self) -> StorageDeviceResult<u64> {
         Ok(self.block_device.count()?.into_bytes_count())
     }
 }
