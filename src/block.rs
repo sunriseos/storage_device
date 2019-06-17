@@ -90,7 +90,7 @@ impl BlockCount {
 }
 
 /// Represent a device holding blocks.
-pub trait BlockDevice: Sized {
+pub trait BlockDevice {
     /// Read blocks from the block device starting at the given ``index``.
     fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> BlockResult<()>;
 
