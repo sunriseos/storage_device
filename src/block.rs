@@ -16,7 +16,6 @@ pub type BlockResult<T> = core::result::Result<T, BlockError>;
 
 /// Represent a certain amount of data from a block device.
 #[derive(Clone)]
-#[repr(C, align(512))]
 pub struct Block {
     /// The actual storage of the block.
     pub contents: [u8; Block::LEN],
