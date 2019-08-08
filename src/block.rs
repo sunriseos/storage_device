@@ -19,7 +19,7 @@ pub type BlockResult<T> = core::result::Result<T, BlockError>;
 #[repr(C)]
 pub struct Block {
     /// The actual storage of the block.
-    pub contents: [u8; Block::LEN],
+    pub contents: [u16; Block::LEN / 2],
 }
 
 /// Represent the position of a block on a block device.
@@ -51,28 +51,42 @@ impl Block {
 
     /// Return the content of the block.
     pub fn as_contents(&self) -> [u8; Block::LEN] {
-        self.contents
+        let mut result = [0x0; Block::LEN];
+        let contents_u8 = unsafe {
+            // Safety: This operation is safe as u8 and u16 have the same memory representation.
+            core::slice::from_raw_parts(self.contents.as_ptr() as *const u8, Self::LEN)
+        };
+
+        result.copy_from_slice(&contents_u8); 
+
+        result
     }
 }
 
 impl Default for Block {
     fn default() -> Self {
         Block {
-            contents: [0u8; Self::LEN],
+            contents: [0u16; Self::LEN / 2],
         }
     }
 }
 
 impl core::ops::Deref for Block {
-    type Target = [u8; Block::LEN];
+    type Target = [u8];
     fn deref(&self) -> &Self::Target {
-        &self.contents
+        unsafe {
+            // Safety: This operation is safe as u8 and u16 have the same memory representation.
+            core::slice::from_raw_parts(self.contents.as_ptr() as *const u8, Self::LEN)
+        }
     }
 }
 
 impl core::ops::DerefMut for Block {
-    fn deref_mut(&mut self) -> &mut [u8; Block::LEN] {
-        &mut self.contents
+    fn deref_mut(&mut self) -> &mut [u8] {
+        unsafe {
+            // Safety: This operation is safe as u8 and u16 have the same memory representation.
+            core::slice::from_raw_parts_mut(self.contents.as_mut_ptr() as *mut u8, Self::LEN)
+        }
     }
 }
 
