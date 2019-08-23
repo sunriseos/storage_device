@@ -91,7 +91,7 @@ impl BlockCount {
 }
 
 /// Represent a device holding blocks.
-pub trait BlockDevice : core::fmt::Debug {
+pub trait BlockDevice: core::fmt::Debug {
     /// Read blocks from the block device starting at the given ``index``.
     fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> BlockResult<()>;
 
@@ -108,7 +108,10 @@ pub trait BlockDevice : core::fmt::Debug {
 /// flushing, or when they are evicted from the cache.
 ///
 /// When a CachedBlockDevice is dropped, it flushes its cache.
-#[cfg(any(feature = "cached-block-device", feature = "cached-block-device-nightly"))]
+#[cfg(any(
+    feature = "cached-block-device",
+    feature = "cached-block-device-nightly"
+))]
 pub struct CachedBlockDevice<B: BlockDevice> {
     /// The inner block device.
     block_device: B,
@@ -118,7 +121,10 @@ pub struct CachedBlockDevice<B: BlockDevice> {
 }
 
 /// Represent a cached block in the LRU cache.
-#[cfg(any(feature = "cached-block-device", feature = "cached-block-device-nightly"))]
+#[cfg(any(
+    feature = "cached-block-device",
+    feature = "cached-block-device-nightly"
+))]
 struct CachedBlock {
     /// Bool indicating whether this block should be written to device when flushing.
     dirty: bool,
@@ -126,16 +132,25 @@ struct CachedBlock {
     data: Block,
 }
 
-#[cfg(any(feature = "cached-block-device", feature = "cached-block-device-nightly"))]
-impl<B> core::fmt::Debug for CachedBlockDevice<B> where B: BlockDevice {
+#[cfg(any(
+    feature = "cached-block-device",
+    feature = "cached-block-device-nightly"
+))]
+impl<B> core::fmt::Debug for CachedBlockDevice<B>
+where
+    B: BlockDevice,
+{
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
         fmt.debug_struct("CachedBlockDevice")
-           .field("block_device", &self.block_device)
-           .finish()
+            .field("block_device", &self.block_device)
+            .finish()
     }
 }
 
-#[cfg(any(feature = "cached-block-device", feature = "cached-block-device-nightly"))]
+#[cfg(any(
+    feature = "cached-block-device",
+    feature = "cached-block-device-nightly"
+))]
 impl<B: BlockDevice> CachedBlockDevice<B> {
     /// Creates a new CachedBlockDevice that wraps `device`, and can hold at most `cap` blocks in cache.
     pub fn new(device: B, cap: usize) -> CachedBlockDevice<B> {
@@ -163,7 +178,10 @@ impl<B: BlockDevice> CachedBlockDevice<B> {
     }
 }
 
-#[cfg(any(feature = "cached-block-device", feature = "cached-block-device-nightly"))]
+#[cfg(any(
+    feature = "cached-block-device",
+    feature = "cached-block-device-nightly"
+))]
 impl<B: BlockDevice> Drop for CachedBlockDevice<B> {
     /// Dropping a CachedBlockDevice flushes it.
     ///
@@ -173,7 +191,10 @@ impl<B: BlockDevice> Drop for CachedBlockDevice<B> {
     }
 }
 
-#[cfg(any(feature = "cached-block-device", feature = "cached-block-device-nightly"))]
+#[cfg(any(
+    feature = "cached-block-device",
+    feature = "cached-block-device-nightly"
+))]
 impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
     /// Attempts to fill `blocks` with blocks found in the cache, and will fetch them from device if it can't.
     ///
@@ -223,7 +244,8 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
                     dirty: false,
                     data: block.clone(),
                 };
-                self.lru_cache.put(BlockIndex(index.0 + i as u64), new_cached_block);
+                self.lru_cache
+                    .put(BlockIndex(index.0 + i as u64), new_cached_block);
             }
         }
         Ok(())
@@ -251,7 +273,8 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
                             .write(core::slice::from_ref(&evicted_block.data), evicted_index)?;
                     }
                 }
-                self.lru_cache.put(BlockIndex(index.0 + i as u64), new_block);
+                self.lru_cache
+                    .put(BlockIndex(index.0 + i as u64), new_block);
             }
         } else {
             // we're performing a big write, that will evict all cache blocks.
@@ -288,7 +311,6 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
 
 #[cfg(feature = "std")]
 impl BlockDevice for std::fs::File {
-
     /// Seeks to the appropriate position, and reads block by block.
     fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> BlockResult<()> {
         use std::io::{Read, Seek};
@@ -304,7 +326,7 @@ impl BlockDevice for std::fs::File {
 
     /// Seeks to the appropriate position, and writes block by block.
     fn write(&mut self, blocks: &[Block], index: BlockIndex) -> BlockResult<()> {
-        use std::io::{Write, Seek};
+        use std::io::{Seek, Write};
 
         self.seek(std::io::SeekFrom::Start(index.into_offset()))
             .map_err(|_| BlockError::ReadError)?;
@@ -316,15 +338,13 @@ impl BlockDevice for std::fs::File {
     }
 
     fn count(&mut self) -> BlockResult<BlockCount> {
-        let num_blocks = self.metadata()
-            .map_err(|_| BlockError::Unknown)?
-            .len() / (Block::LEN_U64);
+        let num_blocks = self.metadata().map_err(|_| BlockError::Unknown)?.len() / (Block::LEN_U64);
         Ok(BlockCount(num_blocks))
     }
 }
 
 #[cfg(feature = "std")]
-use crate::{StorageDevice, StorageDeviceResult, StorageDeviceError};
+use crate::{StorageDevice, StorageDeviceError, StorageDeviceResult};
 
 #[cfg(feature = "std")]
 impl StorageDevice for std::fs::File {
@@ -334,29 +354,26 @@ impl StorageDevice for std::fs::File {
 
         self.seek(std::io::SeekFrom::Start(offset))
             .map_err(|_| BlockError::ReadError)?;
-        self.read_exact(buf)
-            .map_err(|_| BlockError::ReadError)?;
+        self.read_exact(buf).map_err(|_| BlockError::ReadError)?;
         Ok(())
     }
 
     /// Write the data from the given buffer at the given ``offset`` in the storage device.
     fn write(&mut self, offset: u64, buf: &[u8]) -> StorageDeviceResult<()> {
-        use std::io::{Write, Seek};
+        use std::io::{Seek, Write};
 
         self.seek(std::io::SeekFrom::Start(offset))
             .map_err(|_| BlockError::WriteError)?;
-        self.write_all(buf)
-            .map_err(|_| BlockError::WriteError)?;
+        self.write_all(buf).map_err(|_| BlockError::WriteError)?;
         Ok(())
     }
 
     /// Return the total size of the storage device.
     fn len(&mut self) -> StorageDeviceResult<u64> {
-        Ok(
-            self.metadata()
-                .map_err(|_| StorageDeviceError::Unknown)?
-                .len()
-        )
+        Ok(self
+            .metadata()
+            .map_err(|_| StorageDeviceError::Unknown)?
+            .len())
     }
 }
 
@@ -368,28 +385,25 @@ impl StorageDevice for &std::fs::File {
 
         self.seek(std::io::SeekFrom::Start(offset))
             .map_err(|_| BlockError::ReadError)?;
-        self.read_exact(buf)
-            .map_err(|_| BlockError::ReadError)?;
+        self.read_exact(buf).map_err(|_| BlockError::ReadError)?;
         Ok(())
     }
 
     /// Write the data from the given buffer at the given ``offset`` in the storage device.
     fn write(&mut self, offset: u64, buf: &[u8]) -> StorageDeviceResult<()> {
-        use std::io::{Write, Seek};
+        use std::io::{Seek, Write};
 
         self.seek(std::io::SeekFrom::Start(offset))
             .map_err(|_| BlockError::WriteError)?;
-        self.write_all(buf)
-            .map_err(|_| BlockError::WriteError)?;
+        self.write_all(buf).map_err(|_| BlockError::WriteError)?;
         Ok(())
     }
 
     /// Return the total size of the storage device.
     fn len(&mut self) -> StorageDeviceResult<u64> {
-        Ok(
-            self.metadata()
-                .map_err(|_| StorageDeviceError::Unknown)?
-                .len()
-        )
+        Ok(self
+            .metadata()
+            .map_err(|_| StorageDeviceError::Unknown)?
+            .len())
     }
 }

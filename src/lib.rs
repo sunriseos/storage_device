@@ -83,7 +83,8 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
             let current_block_offset = current_offset % Block::LEN_U64;
 
             // Read the block.
-            self.block_device.read(&mut blocks, BlockIndex(current_block_index.0))?;
+            self.block_device
+                .read(&mut blocks, BlockIndex(current_block_index.0))?;
 
             // Slice on the part of the buffer we need.
             let buf_slice = &mut buf[read_size as usize..];
@@ -122,7 +123,8 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
             let current_block_offset = current_offset % Block::LEN_U64;
 
             // Read the block.
-            self.block_device.read(&mut blocks, BlockIndex(current_block_index.0))?;
+            self.block_device
+                .read(&mut blocks, BlockIndex(current_block_index.0))?;
 
             // Slice on the part of the buffer we need.
             let buf_slice = &buf[write_size as usize..];
@@ -141,7 +143,8 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
                 *buf_entry = buf_slice[index];
             }
 
-            self.block_device.write(&blocks, BlockIndex(current_block_index.0))?;
+            self.block_device
+                .write(&blocks, BlockIndex(current_block_index.0))?;
 
             // Increment with what we wrote.
             write_size += buf_limit as u64;
