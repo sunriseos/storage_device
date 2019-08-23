@@ -30,7 +30,7 @@ pub type StorageDeviceResult<T> = core::result::Result<T, StorageDeviceError>;
 /// Represent a device managing storage.
 // we don't need is_empty, this would be stupid.
 #[allow(clippy::len_without_is_empty)]
-pub trait StorageDevice {
+pub trait StorageDevice: core::fmt::Debug {
     /// Read the data at the given ``offset`` in the storage device into a given buffer.
     fn read(&mut self, offset: u64, buf: &mut [u8]) -> StorageDeviceResult<()>;
 
@@ -54,6 +54,7 @@ impl From<BlockError> for StorageDeviceError {
 /// Implementation of storage device for block device.
 /// NOTE: This implementation doesn't use the heap.
 /// NOTE: As it doesn't use a heap, read/write operations are done block by block. If you wish better performances, please consider implementing your own wrapper.
+#[derive(Debug)]
 pub struct StorageBlockDevice<B: BlockDevice> {
     /// The inner block device.
     block_device: B,

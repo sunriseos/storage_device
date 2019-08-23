@@ -91,7 +91,7 @@ impl BlockCount {
 }
 
 /// Represent a device holding blocks.
-pub trait BlockDevice {
+pub trait BlockDevice : core::fmt::Debug {
     /// Read blocks from the block device starting at the given ``index``.
     fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> BlockResult<()>;
 
@@ -124,6 +124,15 @@ struct CachedBlock {
     dirty: bool,
     /// The data of this block.
     data: Block,
+}
+
+#[cfg(any(feature = "cached-block-device", feature = "cached-block-device-nightly"))]
+impl<B> core::fmt::Debug for CachedBlockDevice<B> where B: BlockDevice {
+    fn fmt(&self, fmt: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
+        fmt.debug_struct("CachedBlockDevice")
+           .field("block_device", &self.block_device)
+           .finish()
+    }
 }
 
 #[cfg(any(feature = "cached-block-device", feature = "cached-block-device-nightly"))]
