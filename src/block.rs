@@ -1,3 +1,6 @@
+pub use plain::Plain;
+use core::ops::{Deref, DerefMut};
+
 /// Represent a block error.
 #[derive(Debug)]
 pub enum BlockError {
@@ -15,12 +18,15 @@ pub enum BlockError {
 pub type BlockResult<T> = core::result::Result<T, BlockError>;
 
 /// Represent a certain amount of data from a block device.
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 #[repr(C, align(2))]
 pub struct Block {
     /// The actual storage of the block.
     pub contents: [u8; Block::LEN],
 }
+
+// Safety: A Block is just a wrapper around a byte array. There's no padding.
+unsafe impl Plain for Block {}
 
 /// Represent the position of a block on a block device.
 #[derive(Debug, Copy, Clone, Hash, PartialOrd, PartialEq, Ord, Eq)]
@@ -63,15 +69,15 @@ impl Default for Block {
     }
 }
 
-impl core::ops::Deref for Block {
-    type Target = [u8; Block::LEN];
+impl Deref for Block {
+    type Target = [u8];
     fn deref(&self) -> &Self::Target {
         &self.contents
     }
 }
 
-impl core::ops::DerefMut for Block {
-    fn deref_mut(&mut self) -> &mut [u8; Block::LEN] {
+impl DerefMut for Block {
+    fn deref_mut(&mut self) -> &mut [u8] {
         &mut self.contents
     }
 }
@@ -92,11 +98,13 @@ impl BlockCount {
 
 /// Represent a device holding blocks.
 pub trait BlockDevice: core::fmt::Debug {
+    type Block: Plain + Copy + Default + Deref<Target=[u8]> + DerefMut;
+
     /// Read blocks from the block device starting at the given ``index``.
-    fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> BlockResult<()>;
+    fn read(&mut self, blocks: &mut [Self::Block], index: BlockIndex) -> BlockResult<()>;
 
     /// Write blocks to the block device starting at the given ``index``.
-    fn write(&mut self, blocks: &[Block], index: BlockIndex) -> BlockResult<()>;
+    fn write(&mut self, blocks: &[Self::Block], index: BlockIndex) -> BlockResult<()>;
 
     /// Return the amount of blocks hold by the block device.
     fn count(&mut self) -> BlockResult<BlockCount>;
@@ -117,7 +125,7 @@ pub struct CachedBlockDevice<B: BlockDevice> {
     block_device: B,
 
     /// The LRU cache.
-    lru_cache: lru::LruCache<BlockIndex, CachedBlock>,
+    lru_cache: lru::LruCache<BlockIndex, CachedBlock<B::Block>>,
 }
 
 /// Represent a cached block in the LRU cache.
@@ -125,11 +133,11 @@ pub struct CachedBlockDevice<B: BlockDevice> {
     feature = "cached-block-device",
     feature = "cached-block-device-nightly"
 ))]
-struct CachedBlock {
+struct CachedBlock<B> {
     /// Bool indicating whether this block should be written to device when flushing.
     dirty: bool,
     /// The data of this block.
-    data: Block,
+    data: B,
 }
 
 #[cfg(any(
@@ -196,10 +204,12 @@ impl<B: BlockDevice> Drop for CachedBlockDevice<B> {
     feature = "cached-block-device-nightly"
 ))]
 impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
+    type Block = B::Block;
+
     /// Attempts to fill `blocks` with blocks found in the cache, and will fetch them from device if it can't.
     ///
     /// Will update the access time of every block involved.
-    fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> BlockResult<()> {
+    fn read(&mut self, blocks: &mut [B::Block], index: BlockIndex) -> BlockResult<()> {
         // check if we can satisfy the request only from what we have in cache
         let mut fully_cached = true;
         if blocks.len() > self.lru_cache.len() {
@@ -257,7 +267,7 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
     ///
     /// When the cache is full, least recently used blocks will be evicted and written to device.
     /// This operation may fail, and this function will return an error when it happens.
-    fn write(&mut self, blocks: &[Block], index: BlockIndex) -> BlockResult<()> {
+    fn write(&mut self, blocks: &[B::Block], index: BlockIndex) -> BlockResult<()> {
         if blocks.len() < self.lru_cache.cap() {
             for (i, block) in blocks.iter().enumerate() {
                 let new_block = CachedBlock {
@@ -311,6 +321,8 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
 
 #[cfg(feature = "std")]
 impl BlockDevice for std::fs::File {
+    type Block = Block;
+
     /// Seeks to the appropriate position, and reads block by block.
     fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> BlockResult<()> {
         use std::io::{Read, Seek};

@@ -14,6 +14,7 @@ features = ["cached-block-device"]
 
 [dependencies]
 lru = { version = "0.1.15", optional = true }
+plain = { version = "0.2.3" }
 
 [features]
 default = ["std"]

@@ -70,7 +70,7 @@ impl<B: BlockDevice> StorageBlockDevice<B> {
 impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
     fn read(&mut self, offset: u64, buf: &mut [u8]) -> StorageDeviceResult<()> {
         let mut read_size = 0u64;
-        let mut blocks = [Block::new()];
+        let mut blocks = [B::Block::default()];
 
         while read_size < buf.len() as u64 {
             // Compute the next offset of the data to read.
@@ -84,7 +84,7 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
 
             // Read the block.
             self.block_device
-                .read(&mut blocks, BlockIndex(current_block_index.0))?;
+                .read(&mut blocks[..], BlockIndex(current_block_index.0))?;
 
             // Slice on the part of the buffer we need.
             let buf_slice = &mut buf[read_size as usize..];
@@ -110,7 +110,7 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
 
     fn write(&mut self, offset: u64, buf: &[u8]) -> StorageDeviceResult<()> {
         let mut write_size = 0u64;
-        let mut blocks = [Block::new()];
+        let mut blocks = [B::Block::default()];
 
         while write_size < buf.len() as u64 {
             // Compute the next offset of the data to write.
