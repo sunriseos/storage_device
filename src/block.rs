@@ -97,7 +97,68 @@ impl BlockCount {
 }
 
 /// Represent a device holding blocks.
+///
+/// This trait is agnostic over the size of block that is being held. The user
+/// is free (and encouraged) to define its own block type to use with a
+/// BlockDevice.
 pub trait BlockDevice: core::fmt::Debug {
+    /// Represents a Block that this BlockDevice can read or write to. A Block
+    /// is generally a byte array of a certain fixed size. It might also have
+    /// alignment constraints.
+    ///
+    /// For instance, an AHCI block would be defined as:
+    ///
+    /// ```rust
+    /// use plain::Plain;
+    /// use std::ops::{Deref, DerefMut};
+    ///
+    /// #[repr(C, align(2))]
+    /// #[derive(Debug, Clone, Copy)]
+    /// struct AhciBlock([u8; 512]);
+    ///
+    /// // Safety: Safe because AhciBlock is just a Repr(c) wrapper around a
+    /// // byte array, which respects all of plain's invariants already.
+    /// unsafe impl Plain for AhciBlock {}
+    ///
+    /// impl Default for AhciBlock {
+    ///     fn default() -> AhciBlock {
+    ///         AhciBlock([0; 512])
+    ///     }
+    /// }
+    ///
+    /// impl Deref for AhciBlock {
+    ///     type Target = [u8];
+    ///     fn deref(&self) -> &[u8] {
+    ///         &self.0[..]
+    ///     }
+    /// }
+    ///
+    /// impl DerefMut for AhciBlock {
+    ///     fn deref_mut(&mut self) -> &mut [u8] {
+    ///         &mut self.0[..]
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// # Invariants
+    ///
+    /// There are several invariants Block must respect in order to make
+    /// BlockDevice safe to use:
+    ///
+    /// 1. Block MUST have no padding bytes. In other words, the size
+    ///    of all its component MUST be equal to its size_of::<Self>.
+    ///
+    ///    This comes as an additional invariant to all the other Plain
+    ///    requires, and is necessary to be able to cast a Block to an u8 array,
+    ///    which is internally done by the StorageDevice implementation for
+    ///    a BlockDevice.
+    /// 2. Its Deref implementation MUST deref to its internal byte array.
+    // TODO: Add a trait to encode Block's invariants
+    // BODY: Currently, Block's invariants aren't properly encoded in the type
+    // BODY: system. They are merely documented in BlockDevice's documentation.
+    // BODY: This is, obviously, absolutely terrible. We need to come up with
+    // BODY: the correct set of functions and rules necessary for a proper
+    // BODY: Block implementation that makes this whole crate safe to use.
     type Block: Plain + Copy + Default + Deref<Target=[u8]> + DerefMut;
 
     /// Read blocks from the block device starting at the given ``index``.
