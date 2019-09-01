@@ -1,22 +1,6 @@
 pub use plain::Plain;
 use core::ops::{Deref, DerefMut};
 
-/// Represent a block error.
-#[derive(Debug)]
-pub enum BlockError {
-    /// Read error.
-    ReadError,
-
-    /// Write error.
-    WriteError,
-
-    /// Unknown error.
-    Unknown,
-}
-
-/// Represent a block result.
-pub type BlockResult<T> = core::result::Result<T, BlockError>;
-
 /// Represent a certain amount of data from a block device.
 #[derive(Clone, Copy)]
 #[repr(C, align(2))]

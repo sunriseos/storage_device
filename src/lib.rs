@@ -13,6 +13,7 @@ extern crate std as alloc;
 pub mod block;
 pub mod block_device;
 pub mod storage_device;
+pub mod error;
 
 #[cfg(any(
 feature = "cached-block-device",

@@ -1,6 +1,6 @@
 
-use crate::block::BlockResult;
 use crate::block_device::{BlockDevice, BlockIndex, BlockCount};
+use crate::error::BlockDeviceError;
 
 /// A BlockDevice that reduces device accesses by keeping the most recently used blocks in a cache.
 ///
@@ -50,7 +50,7 @@ impl<B: BlockDevice> CachedBlockDevice<B> {
     /// and update dirty blocks as now non-dirty.
     ///
     /// This function has no effect on lru order.
-    pub fn flush(&mut self) -> BlockResult<()> {
+    pub fn flush(&mut self) -> Result<(), BlockDeviceError> {
         for (index, block) in self.lru_cache.iter_mut() {
             if block.dirty {
                 self.block_device
@@ -77,7 +77,7 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
     /// Attempts to fill `blocks` with blocks found in the cache, and will fetch them from device if it can't.
     ///
     /// Will update the access time of every block involved.
-    fn read(&mut self, blocks: &mut [B::Block], index: BlockIndex) -> BlockResult<()> {
+    fn read(&mut self, blocks: &mut [B::Block], index: BlockIndex) -> Result<(), BlockDeviceError> {
         // check if we can satisfy the request only from what we have in cache
         let mut fully_cached = true;
         if blocks.len() > self.lru_cache.len() {
@@ -135,7 +135,7 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
     ///
     /// When the cache is full, least recently used blocks will be evicted and written to device.
     /// This operation may fail, and this function will return an error when it happens.
-    fn write(&mut self, blocks: &[B::Block], index: BlockIndex) -> BlockResult<()> {
+    fn write(&mut self, blocks: &[B::Block], index: BlockIndex) -> Result<(), BlockDeviceError> {
         if blocks.len() < self.lru_cache.cap() {
             for (i, block) in blocks.iter().enumerate() {
                 let new_block = CachedBlock {
@@ -182,8 +182,7 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
         Ok(())
     }
 
-    fn count(&mut self) -> BlockResult<BlockCount> {
+    fn count(&mut self) -> Result<BlockCount, ()> {
         self.block_device.count()
     }
 }
-

@@ -1,46 +1,23 @@
 
 use crate::block_device::{BlockDevice, BlockIndex};
-use crate::block::{Block, BlockError};
+use crate::block::Block;
+use crate::error::{IoError, IoResult, IoOperation};
+use core::mem::size_of;
 
 /// Represent a device managing storage.
 // we don't need is_empty, this would be stupid.
 #[allow(clippy::len_without_is_empty)]
 pub trait StorageDevice: core::fmt::Debug {
     /// Read the data at the given ``offset`` in the storage device into a given buffer.
-    fn read(&mut self, offset: u64, buf: &mut [u8]) -> StorageDeviceResult<()>;
+    fn read(&mut self, offset: u64, buf: &mut [u8]) -> IoResult<()>;
 
     /// Write the data from the given buffer at the given ``offset`` in the storage device.
-    fn write(&mut self, offset: u64, buf: &[u8]) -> StorageDeviceResult<()>;
+    fn write(&mut self, offset: u64, buf: &[u8]) -> IoResult<()>;
 
     /// Return the total size of the storage device in bytes.
-    fn len(&mut self) -> StorageDeviceResult<u64>;
+    fn len(&mut self) -> Result<u64, ()>;
 }
 
-/// Represent a storage device error.
-#[derive(Debug)]
-pub enum StorageDeviceError {
-    /// Read error.
-    ReadError,
-
-    /// Write error.
-    WriteError,
-
-    /// Unknown error.
-    Unknown,
-}
-
-/// Represent a storage device result.
-pub type StorageDeviceResult<T> = core::result::Result<T, StorageDeviceError>;
-
-impl From<BlockError> for StorageDeviceError {
-    fn from(error: BlockError) -> Self {
-        match error {
-            BlockError::ReadError => StorageDeviceError::ReadError,
-            BlockError::WriteError => StorageDeviceError::WriteError,
-            BlockError::Unknown => StorageDeviceError::Unknown,
-        }
-    }
-}
 /// Implementation of storage device for block device.
 /// NOTE: This implementation doesn't use the heap.
 /// NOTE: As it doesn't use a heap, read/write operations are done block by block. If you wish better performances, please consider implementing your own wrapper.
@@ -58,7 +35,7 @@ impl<B: BlockDevice> StorageBlockDevice<B> {
 }
 
 impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
-    fn read(&mut self, offset: u64, buf: &mut [u8]) -> StorageDeviceResult<()> {
+    fn read(&mut self, offset: u64, buf: &mut [u8]) -> IoResult<()> {
         let mut read_size = 0u64;
         let mut blocks = [B::Block::default()];
 
@@ -74,7 +51,13 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
 
             // Read the block.
             self.block_device
-                .read(&mut blocks[..], BlockIndex(current_block_index.0))?;
+                .read(&mut blocks[..], BlockIndex(current_block_index.0))
+                .map_err(|block_device_err| IoError {
+                    operation: IoOperation::Read,
+                    offset,
+                    len: buf.len(),
+                    block_device_error: Some(block_device_err)
+                })?;
 
             // Slice on the part of the buffer we need.
             let buf_slice = &mut buf[read_size as usize..];
@@ -98,7 +81,7 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
         Ok(())
     }
 
-    fn write(&mut self, offset: u64, buf: &[u8]) -> StorageDeviceResult<()> {
+    fn write(&mut self, offset: u64, buf: &[u8]) -> IoResult<()> {
         let mut write_size = 0u64;
         let mut blocks = [B::Block::default()];
 
@@ -114,7 +97,13 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
 
             // Read the block.
             self.block_device
-                .read(&mut blocks, BlockIndex(current_block_index.0))?;
+                .read(&mut blocks, BlockIndex(current_block_index.0))
+                .map_err(|block_device_err| IoError {
+                    operation: IoOperation::Write,
+                    offset,
+                    len: buf.len(),
+                    block_device_error: Some(block_device_err)
+                })?;
 
             // Slice on the part of the buffer we need.
             let buf_slice = &buf[write_size as usize..];
@@ -134,7 +123,13 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
             }
 
             self.block_device
-                .write(&blocks, BlockIndex(current_block_index.0))?;
+                .write(&blocks, BlockIndex(current_block_index.0))
+                .map_err(|block_device_err| IoError {
+                    operation: IoOperation::Write,
+                    offset,
+                    len: buf.len(),
+                    block_device_error: Some(block_device_err)
+                })?;
 
             // Increment with what we wrote.
             write_size += buf_limit as u64;
@@ -143,21 +138,22 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
         Ok(())
     }
 
-    fn len(&mut self) -> StorageDeviceResult<u64> {
-        Ok(self.block_device.count()?.into_bytes_count())
+    fn len(&mut self) -> Result<u64, ()> {
+        self.block_device.count()
+            .map(|bc| bc.0 * size_of::<B::Block>() as u64)
     }
 }
 
 #[cfg(feature = "alloc")]
 impl<S: StorageDevice + ?Sized> StorageDevice for alloc::boxed::Box<S> {
-    fn read(&mut self, offset: u64, buf: &mut [u8]) -> StorageDeviceResult<()> {
+    fn read(&mut self, offset: u64, buf: &mut [u8]) -> IoResult<()> {
         (**self).read(offset, buf)
     }
-    fn write(&mut self, offset: u64, buf: &[u8]) -> StorageDeviceResult<()> {
+    fn write(&mut self, offset: u64, buf: &[u8]) -> IoResult<()> {
         (**self).write(offset, buf)
     }
 
-    fn len(&mut self) -> StorageDeviceResult<u64> {
+    fn len(&mut self) -> Result<u64, ()> {
         (**self).len()
     }
 }
@@ -165,61 +161,75 @@ impl<S: StorageDevice + ?Sized> StorageDevice for alloc::boxed::Box<S> {
 #[cfg(feature = "std")]
 impl StorageDevice for std::fs::File {
     /// Read the data at the given ``offset`` in the storage device into a given buffer.
-    fn read(&mut self, offset: u64, buf: &mut [u8]) -> StorageDeviceResult<()> {
+    fn read(&mut self, offset: u64, buf: &mut [u8]) -> IoResult<()> {
         use std::io::{Read, Seek};
 
         self.seek(std::io::SeekFrom::Start(offset))
-            .map_err(|_| BlockError::ReadError)?;
-        self.read_exact(buf).map_err(|_| BlockError::ReadError)?;
-        Ok(())
+            .and_then(|_| self.read_exact(buf))
+            .map_err(|_| IoError {
+                operation: IoOperation::Read,
+                offset,
+                len: buf.len(),
+                block_device_error: None // we're reading directly
+            })
     }
 
     /// Write the data from the given buffer at the given ``offset`` in the storage device.
-    fn write(&mut self, offset: u64, buf: &[u8]) -> StorageDeviceResult<()> {
+    fn write(&mut self, offset: u64, buf: &[u8]) -> IoResult<()> {
         use std::io::{Seek, Write};
 
         self.seek(std::io::SeekFrom::Start(offset))
-            .map_err(|_| BlockError::WriteError)?;
-        self.write_all(buf).map_err(|_| BlockError::WriteError)?;
-        Ok(())
+            .and_then(|_| self.write_all(buf))
+            .map_err(|_| IoError {
+                operation: IoOperation::Write,
+                offset,
+                len: buf.len(),
+                block_device_error: None // we're reading directly
+            })
     }
 
     /// Return the total size of the storage device.
-    fn len(&mut self) -> StorageDeviceResult<u64> {
-        Ok(self
-            .metadata()
-            .map_err(|_| StorageDeviceError::Unknown)?
-            .len())
+    fn len(&mut self) -> Result<u64, ()> {
+        self.metadata()
+            .map(|meta| meta.len())
+            .map_err(|_| ())
     }
 }
 
 #[cfg(feature = "std")]
 impl StorageDevice for &std::fs::File {
     /// Read the data at the given ``offset`` in the storage device into a given buffer.
-    fn read(&mut self, offset: u64, buf: &mut [u8]) -> StorageDeviceResult<()> {
+    fn read(&mut self, offset: u64, buf: &mut [u8]) -> IoResult<()> {
         use std::io::{Read, Seek};
 
         self.seek(std::io::SeekFrom::Start(offset))
-            .map_err(|_| BlockError::ReadError)?;
-        self.read_exact(buf).map_err(|_| BlockError::ReadError)?;
-        Ok(())
+            .and_then(|_| self.read_exact(buf))
+            .map_err(|_| IoError {
+                operation: IoOperation::Read,
+                offset,
+                len: buf.len(),
+                block_device_error: None // we're reading directly
+            })
     }
 
     /// Write the data from the given buffer at the given ``offset`` in the storage device.
-    fn write(&mut self, offset: u64, buf: &[u8]) -> StorageDeviceResult<()> {
+    fn write(&mut self, offset: u64, buf: &[u8]) -> IoResult<()> {
         use std::io::{Seek, Write};
 
         self.seek(std::io::SeekFrom::Start(offset))
-            .map_err(|_| BlockError::WriteError)?;
-        self.write_all(buf).map_err(|_| BlockError::WriteError)?;
-        Ok(())
+            .and_then(|_| self.write_all(buf))
+            .map_err(|_| IoError {
+                operation: IoOperation::Read,
+                offset,
+                len: buf.len(),
+                block_device_error: None // we're reading directly
+            })
     }
 
     /// Return the total size of the storage device.
-    fn len(&mut self) -> StorageDeviceResult<u64> {
-        Ok(self
-            .metadata()
-            .map_err(|_| StorageDeviceError::Unknown)?
-            .len())
+    fn len(&mut self) -> Result<u64, ()> {
+        self.metadata()
+            .map(|meta| meta.len())
+            .map_err(|_| ())
     }
 }

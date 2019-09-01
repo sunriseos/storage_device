@@ -1,7 +1,9 @@
 
-use crate::block::{Block, BlockError, BlockResult};
+use crate::block::Block;
+use crate::error::{BlockDeviceError, IoOperation};
 use core::ops::{Deref, DerefMut};
 use plain::Plain;
+use core::mem::size_of;
 
 /// Represent the position of a block on a block device.
 #[derive(Debug, Copy, Clone, Hash, PartialOrd, PartialEq, Ord, Eq)]
@@ -98,13 +100,13 @@ pub trait BlockDevice: core::fmt::Debug {
     type Block: Plain + Copy + Default + Deref<Target=[u8]> + DerefMut;
 
     /// Read blocks from the block device starting at the given ``index``.
-    fn read(&mut self, blocks: &mut [Self::Block], index: BlockIndex) -> BlockResult<()>;
+    fn read(&mut self, blocks: &mut [Self::Block], index: BlockIndex) -> Result<(), BlockDeviceError>;
 
     /// Write blocks to the block device starting at the given ``index``.
-    fn write(&mut self, blocks: &[Self::Block], index: BlockIndex) -> BlockResult<()>;
+    fn write(&mut self, blocks: &[Self::Block], index: BlockIndex) -> Result<(), BlockDeviceError>;
 
     /// Return the amount of blocks hold by the block device.
-    fn count(&mut self) -> BlockResult<BlockCount>;
+    fn count(&mut self) -> Result<BlockCount, ()>;
 }
 
 #[cfg(feature = "std")]
@@ -112,34 +114,45 @@ impl BlockDevice for std::fs::File {
     type Block = Block;
 
     /// Seeks to the appropriate position, and reads block by block.
-    fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> BlockResult<()> {
+    fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> Result<(), BlockDeviceError> {
         use std::io::{Read, Seek};
 
-        self.seek(std::io::SeekFrom::Start(index.into_offset()))
-            .map_err(|_| BlockError::ReadError)?;
-        for block in blocks.iter_mut() {
-            self.read_exact(&mut block.contents)
-                .map_err(|_| BlockError::ReadError)?;
-        }
-        Ok(())
+        self.seek(std::io::SeekFrom::Start(index.into_offset())).ok()
+            .and_then(|_| {
+                let blocks_as_slice = unsafe {
+                    core::slice::from_raw_parts_mut(blocks as *mut _ as *mut u8, blocks.len() * size_of::<Block>())
+                };
+                self.read_exact(blocks_as_slice).ok()
+            })
+            .ok_or_else(|| BlockDeviceError {
+                operation: IoOperation::Read,
+                start_index: index,
+                block_count: BlockCount(blocks.len() as u64)
+            })
     }
 
     /// Seeks to the appropriate position, and writes block by block.
-    fn write(&mut self, blocks: &[Block], index: BlockIndex) -> BlockResult<()> {
+    fn write(&mut self, blocks: &[Block], index: BlockIndex) -> Result<(), BlockDeviceError> {
         use std::io::{Seek, Write};
 
-        self.seek(std::io::SeekFrom::Start(index.into_offset()))
-            .map_err(|_| BlockError::ReadError)?;
-        for block in blocks.iter() {
-            self.write_all(&block.contents)
-                .map_err(|_| BlockError::WriteError)?;
-        }
-        Ok(())
+        self.seek(std::io::SeekFrom::Start(index.into_offset())).ok()
+            .and_then(|_| {
+                let blocks_as_slice = unsafe {
+                    core::slice::from_raw_parts(blocks as *const _ as *const u8, blocks.len() * size_of::<Block>())
+                };
+                self.write_all(blocks_as_slice).ok()
+            })
+            .ok_or_else(|| BlockDeviceError {
+                operation: IoOperation::Read,
+                start_index: index,
+                block_count: BlockCount(blocks.len() as u64)
+            })
     }
 
-    fn count(&mut self) -> BlockResult<BlockCount> {
-        let num_blocks = self.metadata().map_err(|_| BlockError::Unknown)?.len() / (Block::LEN_U64);
-        Ok(BlockCount(num_blocks))
+    fn count(&mut self) -> Result<BlockCount, ()> {
+        self.metadata()
+            .map(|meta| BlockCount(meta.len() / (size_of::<Block>() as u64)))
+            .map_err(|_| ())
     }
 }
 
