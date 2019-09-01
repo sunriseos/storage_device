@@ -113,7 +113,7 @@ pub trait BlockDevice: core::fmt::Debug {
     /// use std::ops::{Deref, DerefMut};
     ///
     /// #[repr(C, align(2))]
-    /// #[derive(Debug, Clone, Copy)]
+    /// #[derive(Clone, Copy)]
     /// struct AhciBlock([u8; 512]);
     ///
     /// // Safety: Safe because AhciBlock is just a Repr(c) wrapper around a
@@ -299,7 +299,7 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
                     // fully_cached: block[i] is uninitialized, copy it from cache.
                     // dirty:        block[i] is initialized from device if !fully_cached,
                     //               but we hold a newer dirty version in cache, overlay it.
-                    *block = cached_block.data.clone();
+                    *block = cached_block.data;
                 }
             } else {
                 // add the block we just read to the cache.
@@ -313,7 +313,7 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
                 }
                 let new_cached_block = CachedBlock {
                     dirty: false,
-                    data: block.clone(),
+                    data: *block,
                 };
                 self.lru_cache
                     .put(BlockIndex(index.0 + i as u64), new_cached_block);
@@ -333,7 +333,7 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
             for (i, block) in blocks.iter().enumerate() {
                 let new_block = CachedBlock {
                     dirty: true,
-                    data: block.clone(),
+                    data: *block,
                 };
                 // add it to the cache
                 // if cache is full, flush its lru entry
@@ -367,7 +367,7 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
                     BlockIndex(index.0 + i as u64),
                     CachedBlock {
                         dirty: false,
-                        data: block.clone(),
+                        data: *block,
                     },
                 )
             }
