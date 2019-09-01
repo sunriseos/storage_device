@@ -13,27 +13,6 @@ pub struct BlockIndex(pub u64);
 #[derive(Debug, Copy, Clone)]
 pub struct BlockCount(pub u64);
 
-impl BlockCount {
-    /// Get the block count as a raw bytes count.
-    pub fn into_bytes_count(self) -> u64 {
-        self.0 * Block::LEN_U64
-    }
-}
-
-impl BlockIndex {
-    /// Convert the block index into an offset in bytes.
-    pub fn into_offset(self) -> u64 {
-        self.0 * Block::LEN_U64
-    }
-}
-
-impl BlockCount {
-    /// Convert the block count into a size in bytes.
-    pub fn into_size(self) -> u64 {
-        self.0 * Block::LEN_U64
-    }
-}
-
 /// Represent a device holding blocks.
 ///
 /// This trait is agnostic over the size of block that is being held. The user
@@ -117,10 +96,10 @@ impl BlockDevice for std::fs::File {
     fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> Result<(), BlockDeviceError> {
         use std::io::{Read, Seek};
 
-        self.seek(std::io::SeekFrom::Start(index.into_offset())).ok()
+        self.seek(std::io::SeekFrom::Start(index.0 * size_of::<Self::Block>() as u64)).ok()
             .and_then(|_| {
                 let blocks_as_slice = unsafe {
-                    core::slice::from_raw_parts_mut(blocks as *mut _ as *mut u8, blocks.len() * size_of::<Block>())
+                    core::slice::from_raw_parts_mut(blocks as *mut _ as *mut u8, blocks.len() * size_of::<Self::Block>())
                 };
                 self.read_exact(blocks_as_slice).ok()
             })
@@ -135,10 +114,10 @@ impl BlockDevice for std::fs::File {
     fn write(&mut self, blocks: &[Block], index: BlockIndex) -> Result<(), BlockDeviceError> {
         use std::io::{Seek, Write};
 
-        self.seek(std::io::SeekFrom::Start(index.into_offset())).ok()
+        self.seek(std::io::SeekFrom::Start(index.0 * size_of::<Self::Block>() as u64)).ok()
             .and_then(|_| {
                 let blocks_as_slice = unsafe {
-                    core::slice::from_raw_parts(blocks as *const _ as *const u8, blocks.len() * size_of::<Block>())
+                    core::slice::from_raw_parts(blocks as *const _ as *const u8, blocks.len() * size_of::<Self::Block>())
                 };
                 self.write_all(blocks_as_slice).ok()
             })
@@ -155,5 +134,3 @@ impl BlockDevice for std::fs::File {
             .map_err(|_| ())
     }
 }
-
-
