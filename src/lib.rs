@@ -5,6 +5,11 @@
 
 #[cfg(feature = "std")]
 extern crate std;
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
+#[cfg(feature = "alloc")]
+use alloc::boxed::Box;
 
 /// Block device representation.
 pub mod block;
@@ -39,6 +44,20 @@ pub trait StorageDevice: core::fmt::Debug {
 
     /// Return the total size of the storage device in bytes.
     fn len(&mut self) -> StorageDeviceResult<u64>;
+}
+
+#[cfg(feature = "alloc")]
+impl<S: StorageDevice + ?Sized> StorageDevice for Box<S> {
+    fn read(&mut self, offset: u64, buf: &mut [u8]) -> StorageDeviceResult<()> {
+        (**self).read(offset, buf)
+    }
+    fn write(&mut self, offset: u64, buf: &[u8]) -> StorageDeviceResult<()> {
+        (**self).write(offset, buf)
+    }
+
+    fn len(&mut self) -> StorageDeviceResult<u64> {
+        (**self).len()
+    }
 }
 
 impl From<BlockError> for StorageDeviceError {
