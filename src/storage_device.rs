@@ -6,8 +6,8 @@
 //! operations.
 
 use crate::block_device::{BlockDevice, BlockIndex};
-use crate::error::{IoError, IoResult, IoOperation, BlockDeviceError};
 use core::mem::{size_of, align_of};
+use core::fmt::Debug;
 
 /// A trait to represent any device that exposes byte-granular read and write operations,
 /// as opposed to block-size operations.
@@ -15,15 +15,18 @@ use core::mem::{size_of, align_of};
 /// A `StorageDevice` can read/write to/from arbitrary length buffers, and at arbitrary offsets.
 // we don't need is_empty, this would be stupid.
 #[allow(clippy::len_without_is_empty)]
-pub trait StorageDevice: core::fmt::Debug {
+pub trait StorageDevice: Debug {
+    /// Error type returned by this block device when an operation fails
+    type Error: Debug;
+
     /// Read the data at the given ``offset`` in the storage device into a given buffer.
-    fn read(&mut self, offset: u64, buf: &mut [u8]) -> IoResult<()>;
+    fn read(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), Self::Error>;
 
     /// Write the data from the given buffer at the given ``offset`` in the storage device.
-    fn write(&mut self, offset: u64, buf: &[u8]) -> IoResult<()>;
+    fn write(&mut self, offset: u64, buf: &[u8]) -> Result<(), Self::Error>;
 
     /// Return the total size of the storage device in bytes.
-    fn len(&mut self) -> Result<u64, ()>;
+    fn len(&mut self) -> Result<u64, Self::Error>;
 }
 
 /// Turns any [`BlockDevice`] to a [`StorageDevice`] by implementing the logic to read and write
@@ -81,7 +84,7 @@ impl<BD: BlockDevice> StorageBlockDevice<BD> {
     /// When at step 2, if the buffer's middle part isn't block aligned, we cannot read directly to
     /// it. In this case, we're reading one block at a time, and the number of requests we will make
     /// can be alarming. So try to avoid this condition the better you can.
-    fn read_internal(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), BlockDeviceError> {
+    fn read_internal(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), BD::Error> {
         // here's how we're splitting our operation
         let first_part_block = offset / size_of::<BD::Block>() as u64;
         let first_part_len = (size_of::<BD::Block>() as u64 - (offset % size_of::<BD::Block>() as u64)) as usize;
@@ -184,7 +187,7 @@ impl<BD: BlockDevice> StorageBlockDevice<BD> {
     /// When at step 2, if the buffer's middle part isn't block aligned, we cannot write directly to
     /// it. In this case, we're writing one block at a time, and the number of requests we will make
     /// can be alarming. So try to avoid this condition the better you can.
-    fn write_internal(&mut self, offset: u64, buf: &[u8]) -> Result<(), BlockDeviceError> {
+    fn write_internal(&mut self, offset: u64, buf: &[u8]) -> Result<(), BD::Error> {
         // here's how we're splitting our operation
         let first_part_block = offset / size_of::<BD::Block>() as u64;
         let first_part_len = (size_of::<BD::Block>() as u64 - (offset % size_of::<BD::Block>() as u64)) as usize;
@@ -289,29 +292,18 @@ impl<BD: BlockDevice> StorageBlockDevice<BD> {
 }
 
 impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
-    fn read(&mut self, offset: u64, buf: &mut [u8]) -> IoResult<()> {
-        // call read_internal and add some nice error context
+    type Error = B::Error;
+
+    fn read(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), Self::Error> {
         self.read_internal(offset, buf)
-            .map_err(|bd_error| IoError {
-                operation: IoOperation::Read,
-                offset,
-                len: buf.len(),
-                block_device_error: Some(bd_error)
-            })
     }
 
-    fn write(&mut self, offset: u64, buf: &[u8]) -> IoResult<()> {
+    fn write(&mut self, offset: u64, buf: &[u8]) -> Result<(), Self::Error> {
         // call write_internal and add some nice error context
         self.write_internal(offset, buf)
-            .map_err(|bd_error| IoError {
-                operation: IoOperation::Write,
-                offset,
-                len: buf.len(),
-                block_device_error: Some(bd_error)
-            })
     }
 
-    fn len(&mut self) -> Result<u64, ()> {
+    fn len(&mut self) -> Result<u64, Self::Error> {
         self.block_device.count()
             .map(|bc| bc.0 * size_of::<B::Block>() as u64)
     }
@@ -319,98 +311,77 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
 
 #[cfg(feature = "alloc")]
 impl<S: StorageDevice + ?Sized> StorageDevice for alloc::boxed::Box<S> {
-    fn read(&mut self, offset: u64, buf: &mut [u8]) -> IoResult<()> {
+    type Error = S::Error;
+
+    fn read(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), Self::Error> {
         (**self).read(offset, buf)
     }
-    fn write(&mut self, offset: u64, buf: &[u8]) -> IoResult<()> {
+    fn write(&mut self, offset: u64, buf: &[u8]) -> Result<(), Self::Error> {
         (**self).write(offset, buf)
     }
 
-    fn len(&mut self) -> Result<u64, ()> {
+    fn len(&mut self) -> Result<u64, Self::Error> {
         (**self).len()
     }
 }
 
 #[cfg(feature = "std")]
 impl StorageDevice for std::fs::File {
+    type Error = std::io::Error;
+
     /// Read the data at the given ``offset`` in the storage device into a given buffer.
-    fn read(&mut self, offset: u64, buf: &mut [u8]) -> IoResult<()> {
+    fn read(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), Self::Error> {
         use std::io::{Read, Seek};
 
         self.seek(std::io::SeekFrom::Start(offset))
             .and_then(|_| self.read_exact(buf))
-            .map_err(|_| IoError {
-                operation: IoOperation::Read,
-                offset,
-                len: buf.len(),
-                block_device_error: None // we're reading directly
-            })
     }
 
     /// Write the data from the given buffer at the given ``offset`` in the storage device.
-    fn write(&mut self, offset: u64, buf: &[u8]) -> IoResult<()> {
+    fn write(&mut self, offset: u64, buf: &[u8]) -> Result<(), Self::Error> {
         use std::io::{Seek, Write};
 
         self.seek(std::io::SeekFrom::Start(offset))
             .and_then(|_| self.write_all(buf))
-            .map_err(|_| IoError {
-                operation: IoOperation::Write,
-                offset,
-                len: buf.len(),
-                block_device_error: None // we're reading directly
-            })
     }
 
     /// Return the total size of the storage device.
-    fn len(&mut self) -> Result<u64, ()> {
+    fn len(&mut self) -> Result<u64, Self::Error> {
         self.metadata()
             .map(|meta| meta.len())
-            .map_err(|_| ())
     }
 }
 
 #[cfg(feature = "std")]
 impl StorageDevice for &std::fs::File {
+    type Error = std::io::Error;
+
     /// Read the data at the given ``offset`` in the storage device into a given buffer.
-    fn read(&mut self, offset: u64, buf: &mut [u8]) -> IoResult<()> {
+    fn read(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), Self::Error> {
         use std::io::{Read, Seek};
 
         self.seek(std::io::SeekFrom::Start(offset))
             .and_then(|_| self.read_exact(buf))
-            .map_err(|_| IoError {
-                operation: IoOperation::Read,
-                offset,
-                len: buf.len(),
-                block_device_error: None // we're reading directly
-            })
     }
 
     /// Write the data from the given buffer at the given ``offset`` in the storage device.
-    fn write(&mut self, offset: u64, buf: &[u8]) -> IoResult<()> {
+    fn write(&mut self, offset: u64, buf: &[u8]) -> Result<(), Self::Error> {
         use std::io::{Seek, Write};
 
         self.seek(std::io::SeekFrom::Start(offset))
             .and_then(|_| self.write_all(buf))
-            .map_err(|_| IoError {
-                operation: IoOperation::Read,
-                offset,
-                len: buf.len(),
-                block_device_error: None // we're reading directly
-            })
     }
 
     /// Return the total size of the storage device.
-    fn len(&mut self) -> Result<u64, ()> {
+    fn len(&mut self) -> Result<u64, Self::Error> {
         self.metadata()
             .map(|meta| meta.len())
-            .map_err(|_| ())
     }
 }
 
 #[cfg(test)]
 mod test {
     use crate::block_device::{BlockIndex, BlockCount, BlockDevice};
-    use crate::error::{IoOperation, BlockDeviceError};
     use crate::storage_device::{StorageDevice, StorageBlockDevice};
     use crate::block::Block;
 
@@ -424,8 +395,9 @@ mod test {
 
     impl BlockDevice for DbgBlockDevice {
         type Block = crate::block::Block;
+        type Error = ();
 
-        fn read(&mut self, blocks: &mut [Block], _index: BlockIndex) -> Result<(), BlockDeviceError> {
+        fn read(&mut self, blocks: &mut [Block], _index: BlockIndex) -> Result<(), Self::Error> {
             assert_eq!(((&blocks[0]) as *const Block as usize) % core::mem::align_of::<Block>(), 0, "DbgBlockDevice got a misaligned block");
             for block in blocks.iter_mut() {
                 for (index, byte) in block.contents.iter_mut().enumerate()  {
@@ -435,23 +407,19 @@ mod test {
             Ok(())
         }
 
-        fn write(&mut self, blocks: &[Block], index: BlockIndex) -> Result<(), BlockDeviceError> {
+        fn write(&mut self, blocks: &[Block], _index: BlockIndex) -> Result<(), Self::Error> {
             assert_eq!(((&blocks[0]) as *const Block as usize) % core::mem::align_of::<Block>(), 0, "DbgBlockDevice got a misaligned block");
             for block in blocks.iter() {
                 for (idx, byte) in block.contents.iter().enumerate() {
                     if *byte != (idx as u8) {
-                        return Err(BlockDeviceError {
-                            operation: IoOperation::Write,
-                            start_index: index,
-                            block_count: BlockCount(blocks.len() as u64)
-                        })
+                        return Err(())
                     }
                 }
             }
             Ok(())
         }
 
-        fn count(&mut self) -> Result<BlockCount, ()> {
+        fn count(&mut self) -> Result<BlockCount, Self::Error> {
             Ok(BlockCount(8))
         }
     }
@@ -465,8 +433,9 @@ mod test {
 
     impl BlockDevice for DbgIdxBlockDevice {
         type Block = crate::block::Block;
+        type Error = ();
 
-        fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> Result<(), BlockDeviceError> {
+        fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> Result<(), Self::Error> {
             assert_eq!(((&blocks[0]) as *const Block as usize) % core::mem::align_of::<Block>(), 0, "DbgIdxBlockDevice got a misaligned block");
             for (i, block) in blocks.iter_mut().enumerate() {
                 for byte in block.contents.iter_mut() {
@@ -476,23 +445,19 @@ mod test {
             Ok(())
         }
 
-        fn write(&mut self, blocks: &[Block], index: BlockIndex) -> Result<(), BlockDeviceError> {
+        fn write(&mut self, blocks: &[Block], index: BlockIndex) -> Result<(), Self::Error> {
             assert_eq!(((&blocks[0]) as *const Block as usize) % core::mem::align_of::<Block>(), 0, "DbgIdxBlockDevice got a misaligned block");
             for (i, block) in blocks.iter().enumerate() {
                 for byte in block.contents.iter() {
                     if *byte != (i as u64 + index.0) as u8 {
-                        return Err(BlockDeviceError {
-                            operation: IoOperation::Write,
-                            block_count: BlockCount(blocks.len() as u64),
-                            start_index: index
-                        })
+                        return Err(())
                     }
                 }
             }
             Ok(())
         }
 
-        fn count(&mut self) -> Result<BlockCount, ()> {
+        fn count(&mut self) -> Result<BlockCount, Self::Error> {
             Ok(BlockCount(8))
         }
     }

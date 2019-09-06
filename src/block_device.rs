@@ -1,9 +1,11 @@
 
-use crate::block::Block;
-use crate::error::{BlockDeviceError, IoOperation};
 use core::ops::{Deref, DerefMut};
 use plain::Plain;
+use core::fmt::Debug;
+#[cfg(feature = "std")]
 use core::mem::size_of;
+#[cfg(feature = "std")]
+use crate::block::Block;
 
 /// Represent the position of a block on a block device.
 #[derive(Debug, Copy, Clone, Hash, PartialOrd, PartialEq, Ord, Eq)]
@@ -78,59 +80,55 @@ pub trait BlockDevice: core::fmt::Debug {
     // BODY: Block implementation that makes this whole crate safe to use.
     type Block: Plain + Copy + Default + Deref<Target=[u8]> + DerefMut;
 
+    /// Error type returned by this block device when an operation fails
+    type Error: Debug;
+
     /// Read blocks from the block device starting at the given ``index``.
-    fn read(&mut self, blocks: &mut [Self::Block], index: BlockIndex) -> Result<(), BlockDeviceError>;
+    fn read(&mut self, blocks: &mut [Self::Block], index: BlockIndex) -> Result<(), Self::Error>;
 
     /// Write blocks to the block device starting at the given ``index``.
-    fn write(&mut self, blocks: &[Self::Block], index: BlockIndex) -> Result<(), BlockDeviceError>;
+    fn write(&mut self, blocks: &[Self::Block], index: BlockIndex) -> Result<(), Self::Error>;
 
     /// Return the amount of blocks hold by the block device.
-    fn count(&mut self) -> Result<BlockCount, ()>;
+    fn count(&mut self) -> Result<BlockCount, Self::Error>;
 }
 
 #[cfg(feature = "std")]
 impl BlockDevice for std::fs::File {
     type Block = Block;
 
+    type Error = std::io::Error;
+
     /// Seeks to the appropriate position, and reads block by block.
-    fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> Result<(), BlockDeviceError> {
+    fn read(&mut self, blocks: &mut [Block], index: BlockIndex) -> Result<(), Self::Error> {
         use std::io::{Read, Seek};
 
-        self.seek(std::io::SeekFrom::Start(index.0 * size_of::<Self::Block>() as u64)).ok()
-            .and_then(|_| {
-                let blocks_as_slice = unsafe {
-                    core::slice::from_raw_parts_mut(blocks as *mut _ as *mut u8, blocks.len() * size_of::<Self::Block>())
-                };
-                self.read_exact(blocks_as_slice).ok()
-            })
-            .ok_or_else(|| BlockDeviceError {
-                operation: IoOperation::Read,
-                start_index: index,
-                block_count: BlockCount(blocks.len() as u64)
-            })
+        self.seek(std::io::SeekFrom::Start(index.0 * size_of::<Self::Block>() as u64))?;
+
+        let blocks_as_slice = unsafe {
+            // safe: the bounds on Block explicitly guarantees us this is safe.
+            core::slice::from_raw_parts_mut(blocks as *mut _ as *mut u8, blocks.len() * size_of::<Self::Block>())
+        };
+
+        self.read_exact(blocks_as_slice)
     }
 
     /// Seeks to the appropriate position, and writes block by block.
-    fn write(&mut self, blocks: &[Block], index: BlockIndex) -> Result<(), BlockDeviceError> {
+    fn write(&mut self, blocks: &[Block], index: BlockIndex) -> Result<(), Self::Error> {
         use std::io::{Seek, Write};
 
-        self.seek(std::io::SeekFrom::Start(index.0 * size_of::<Self::Block>() as u64)).ok()
-            .and_then(|_| {
-                let blocks_as_slice = unsafe {
-                    core::slice::from_raw_parts(blocks as *const _ as *const u8, blocks.len() * size_of::<Self::Block>())
-                };
-                self.write_all(blocks_as_slice).ok()
-            })
-            .ok_or_else(|| BlockDeviceError {
-                operation: IoOperation::Read,
-                start_index: index,
-                block_count: BlockCount(blocks.len() as u64)
-            })
+        self.seek(std::io::SeekFrom::Start(index.0 * size_of::<Self::Block>() as u64))?;
+
+        let blocks_as_slice = unsafe {
+            // safe: the bounds on Block explicitly guarantees us this is safe.
+            core::slice::from_raw_parts(blocks as *const _ as *const u8, blocks.len() * size_of::<Self::Block>())
+        };
+
+        self.write_all(blocks_as_slice)
     }
 
-    fn count(&mut self) -> Result<BlockCount, ()> {
+    fn count(&mut self) -> Result<BlockCount, Self::Error> {
         self.metadata()
             .map(|meta| BlockCount(meta.len() / (size_of::<Block>() as u64)))
-            .map_err(|_| ())
     }
 }
