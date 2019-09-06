@@ -6,8 +6,9 @@
 //! operations.
 
 use crate::block_device::{BlockDevice, BlockIndex};
-use core::mem::{size_of, align_of};
+use core::mem::size_of;
 use core::fmt::Debug;
+use plain::Plain;
 
 /// A trait to represent any device that exposes byte-granular read and write operations,
 /// as opposed to block-size operations.
@@ -116,17 +117,10 @@ impl<BD: BlockDevice> StorageBlockDevice<BD> {
             // truncate the buffer to only the interesting part so we're sure we don't spill.
             let buf = &mut buf[first_part_len..(first_part_len + middle_part_len)];
 
-            let buf_misalignment = &mut buf[0] as *mut u8 as usize % align_of::<BD::Block>();
-
             if middle_part_len > 0 {
-                if buf_misalignment == 0 {
+                // try to cast the buffer as an array of Blocks, but align may be wrong
+                if let Ok(blocks) = BD::Block::slice_from_mut_bytes(buf) {
                     // read everything in one go
-                    // cast the buffer as an array of bytes
-                    let blocks = unsafe {
-                        // safe: the contract on blocks guarantees us we can do that
-                        core::slice::from_raw_parts_mut(buf as *mut [u8] as *mut BD::Block,
-                                                        buf.len() / size_of::<BD::Block>())
-                    };
                     self.block_device.read(
                         blocks,
                         BlockIndex(middle_part_block)
@@ -229,17 +223,10 @@ impl<BD: BlockDevice> StorageBlockDevice<BD> {
             // truncate the buffer to only the interesting part so we're sure we don't spill.
             let buf = &buf[first_part_len..(first_part_len + middle_part_len)];
 
-            let buf_misalignment = &buf[0] as *const u8 as usize % align_of::<BD::Block>();
-
             if middle_part_len > 0 {
-                if buf_misalignment == 0 {
+                // try to cast the buffer as an array of Blocks, but align may be wrong
+                if let Ok(blocks) = BD::Block::slice_from_bytes(buf) {
                     // write everything in one go
-                    // cast the buffer as an array of bytes
-                    let blocks = unsafe {
-                        // safe: the contract on blocks guarantees us we can do that
-                        core::slice::from_raw_parts(buf as *const [u8] as *const BD::Block,
-                                                        buf.len() / size_of::<BD::Block>())
-                    };
                     self.block_device.write(
                         blocks,
                         BlockIndex(middle_part_block)
