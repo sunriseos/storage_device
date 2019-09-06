@@ -176,7 +176,7 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
                         dirty: false,
                         data: *block,
                     },
-                )
+                );
             }
         }
         Ok(())
