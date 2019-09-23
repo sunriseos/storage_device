@@ -1,3 +1,7 @@
+//! LRU block cache.
+//!
+//! A simple wrapper around a BlockDevice that adds a layer of caching, based on
+//! LRU.
 
 use crate::block_device::{BlockDevice, BlockIndex, BlockCount};
 

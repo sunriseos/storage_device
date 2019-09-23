@@ -1,3 +1,9 @@
+//! Default block implementation.
+//!
+//! A default block implementation, modeled around the requirements of AHCI.
+//! Useful for implementing block device on devices that don't have any
+//! particularly strict requirements on block size or alignment.
+
 pub use plain::Plain;
 use core::ops::{Deref, DerefMut};
 

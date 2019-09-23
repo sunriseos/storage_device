@@ -1,3 +1,8 @@
+//! Common block device trait.
+//!
+//! A block device represents a storage device whose content can only be
+//! accessed through blocks of a certain size and alignment. For instance, a
+//! common hard drive can only be accessed through 512-bytes blocks.
 
 use core::ops::{Deref, DerefMut};
 use plain::Plain;
