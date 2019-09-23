@@ -19,3 +19,6 @@ feature = "cached-block-device",
 feature = "cached-block-device-nightly"
 ))]
 pub mod cached_block_device;
+
+pub use storage_device::StorageDevice;
+pub use block_device::BlockDevice;
