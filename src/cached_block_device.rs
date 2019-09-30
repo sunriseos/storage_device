@@ -186,6 +186,10 @@ impl<B: BlockDevice> BlockDevice for CachedBlockDevice<B> {
         Ok(())
     }
 
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        self.block_device.flush()
+    }
+
     fn count(&mut self) -> Result<BlockCount, Self::Error> {
         self.block_device.count()
     }

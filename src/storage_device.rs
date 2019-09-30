@@ -24,7 +24,14 @@ pub trait StorageDevice: Debug {
     fn read(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), Self::Error>;
 
     /// Write the data from the given buffer at the given ``offset`` in the storage device.
+    ///
+    /// Writes aren't guaranteed to persist to disk until `flush()` is called.
     fn write(&mut self, offset: u64, buf: &[u8]) -> Result<(), Self::Error>;
+
+    /// Persists writes to disk.
+    ///
+    /// Default implementation is a noop.
+    fn flush(&mut self) -> Result<(), Self::Error>;
 
     /// Return the total size of the storage device in bytes.
     fn len(&mut self) -> Result<u64, Self::Error>;
@@ -290,6 +297,10 @@ impl<B: BlockDevice> StorageDevice for StorageBlockDevice<B> {
         self.write_internal(offset, buf)
     }
 
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        self.block_device.flush()
+    }
+
     fn len(&mut self) -> Result<u64, Self::Error> {
         self.block_device.count()
             .map(|bc| bc.0 * size_of::<B::Block>() as u64)
@@ -303,8 +314,13 @@ impl<S: StorageDevice + ?Sized> StorageDevice for alloc::boxed::Box<S> {
     fn read(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), Self::Error> {
         (**self).read(offset, buf)
     }
+
     fn write(&mut self, offset: u64, buf: &[u8]) -> Result<(), Self::Error> {
         (**self).write(offset, buf)
+    }
+
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        (**self).flush()
     }
 
     fn len(&mut self) -> Result<u64, Self::Error> {
@@ -332,6 +348,10 @@ impl StorageDevice for std::fs::File {
             .and_then(|_| self.write_all(buf))
     }
 
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        self.sync_data()
+    }
+
     /// Return the total size of the storage device.
     fn len(&mut self) -> Result<u64, Self::Error> {
         self.metadata()
@@ -357,6 +377,10 @@ impl StorageDevice for &std::fs::File {
 
         self.seek(std::io::SeekFrom::Start(offset))
             .and_then(|_| self.write_all(buf))
+    }
+
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        self.sync_data()
     }
 
     /// Return the total size of the storage device.

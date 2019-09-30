@@ -92,7 +92,16 @@ pub trait BlockDevice: core::fmt::Debug {
     fn read(&mut self, blocks: &mut [Self::Block], index: BlockIndex) -> Result<(), Self::Error>;
 
     /// Write blocks to the block device starting at the given ``index``.
+    ///
+    /// Writes aren't guaranteed to persist to disk until `flush()` is called.
     fn write(&mut self, blocks: &[Self::Block], index: BlockIndex) -> Result<(), Self::Error>;
+
+    /// Persists writes to disk.
+    ///
+    /// Default implementation is a noop.
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
 
     /// Return the amount of blocks hold by the block device.
     fn count(&mut self) -> Result<BlockCount, Self::Error>;
@@ -130,6 +139,10 @@ impl BlockDevice for std::fs::File {
         };
 
         self.write_all(blocks_as_slice)
+    }
+
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        self.sync_data()
     }
 
     fn count(&mut self) -> Result<BlockCount, Self::Error> {
