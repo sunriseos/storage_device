@@ -95,10 +95,15 @@ impl<BD: BlockDevice> StorageBlockDevice<BD> {
     fn read_internal(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), BD::Error> {
         // here's how we're splitting our operation
         let first_part_block = offset / size_of::<BD::Block>() as u64;
-        let first_part_len = (size_of::<BD::Block>() as u64 - (offset % size_of::<BD::Block>() as u64)) as usize;
+        let first_part_offset = offset % size_of::<BD::Block>() as u64;
+        let first_part_len = core::cmp::min((size_of::<BD::Block>() as u64 - first_part_offset) as usize, buf.len());
         let middle_part_block = if first_part_len == 0 { first_part_block } else { first_part_block + 1 };
         let end_part_block = (offset + buf.len() as u64) / size_of::<BD::Block>() as u64;
-        let end_part_len = ((offset + buf.len() as u64) % size_of::<BD::Block>() as u64) as usize;
+        let end_part_len = if first_part_block == end_part_block {
+            0
+        } else {
+            ((offset + buf.len() as u64) % size_of::<BD::Block>() as u64) as usize
+        };
         let middle_part_len = buf.len() - first_part_len - end_part_len;
 
         {
@@ -114,7 +119,7 @@ impl<BD: BlockDevice> StorageBlockDevice<BD> {
                     BlockIndex(first_part_block)
                 )?;
                 // and copy only the end bytes to our destination buffer
-                buf.copy_from_slice(&self.tmp_block[(size_of::<BD::Block>() - first_part_len)..]);
+                buf.copy_from_slice(&self.tmp_block[first_part_offset as usize..first_part_offset as usize + first_part_len]);
             }
         }
 
@@ -191,10 +196,15 @@ impl<BD: BlockDevice> StorageBlockDevice<BD> {
     fn write_internal(&mut self, offset: u64, buf: &[u8]) -> Result<(), BD::Error> {
         // here's how we're splitting our operation
         let first_part_block = offset / size_of::<BD::Block>() as u64;
-        let first_part_len = (size_of::<BD::Block>() as u64 - (offset % size_of::<BD::Block>() as u64)) as usize;
+        let first_part_offset = offset % size_of::<BD::Block>() as u64;
+        let first_part_len = core::cmp::min((size_of::<BD::Block>() as u64 - first_part_offset) as usize, buf.len());
         let middle_part_block = if first_part_len == 0 { first_part_block } else { first_part_block + 1 };
         let end_part_block = (offset + buf.len() as u64) / size_of::<BD::Block>() as u64;
-        let end_part_len = ((offset + buf.len() as u64) % size_of::<BD::Block>() as u64) as usize;
+        let end_part_len = if first_part_block == end_part_block {
+            0
+        } else {
+            ((offset + buf.len() as u64) % size_of::<BD::Block>() as u64) as usize
+        };
         let middle_part_len = buf.len() - first_part_len - end_part_len;
 
         {
@@ -214,7 +224,7 @@ impl<BD: BlockDevice> StorageBlockDevice<BD> {
                     // safe: the contract on Blocks guarantees us we can do that
                     plain::as_mut_bytes(&mut self.tmp_block)
                 };
-                block_bytes[(size_of::<BD::Block>() - first_part_len)..].copy_from_slice(buf);
+                block_bytes[first_part_offset as usize..first_part_offset as usize + first_part_len].copy_from_slice(buf);
 
                 // and write back the block to the device
                 self.block_device.write(
@@ -665,6 +675,7 @@ mod test {
 
     #[test]
     fn check_small_read_write() {
+        // Regression test, see
         let mut storage_dev = StorageBlockDevice::new(DbgBlockDevice);
         let mut buf = [0x55; 0x80];
 
@@ -673,7 +684,7 @@ mod test {
                 .expect("reading failed");
 
             // writing back should also work
-            StorageDevice::write(&mut storage_dev, 0x400, &mut buf)
+            StorageDevice::write(&mut storage_dev, 0x400, &buf)
                 .expect("writing failed");
         }
     }
