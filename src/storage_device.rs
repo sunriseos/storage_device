@@ -662,4 +662,19 @@ mod test {
                 .expect("writing failed");
         }
     }
+
+    #[test]
+    fn check_small_read_write() {
+        let mut storage_dev = StorageBlockDevice::new(DbgBlockDevice);
+        let mut buf = [0x55; 0x80];
+
+        {
+            StorageDevice::read(&mut storage_dev, 0x400, &mut buf)
+                .expect("reading failed");
+
+            // writing back should also work
+            StorageDevice::write(&mut storage_dev, 0x400, &mut buf)
+                .expect("writing failed");
+        }
+    }
 }
