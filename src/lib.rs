@@ -5,20 +5,15 @@
 
 #[cfg(feature = "std")]
 extern crate std;
-#[cfg(all(feature = "alloc", not(feature = "std")))]
+#[cfg(feature = "alloc")]
 extern crate alloc;
-#[cfg(all(feature = "alloc", feature = "std"))]
-extern crate std as alloc;
 
 pub mod block;
 pub mod block_device;
 pub mod storage_device;
 
-#[cfg(any(
-feature = "cached-block-device",
-feature = "cached-block-device-nightly"
-))]
+#[cfg(feature = "cached-block-device")]
 pub mod cached_block_device;
 
-pub use storage_device::StorageDevice;
+pub use crate::storage_device::StorageDevice;
 pub use block_device::BlockDevice;
