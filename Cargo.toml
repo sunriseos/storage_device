@@ -13,7 +13,7 @@ edition = "2018"
 features = ["cached-block-device"]
 
 [dependencies]
-lru = { version = "0.1.17", optional = true }
+lru = { version = "0.5.0", optional = true }
 plain = { version = "0.2.3" }
 
 [features]
@@ -30,8 +30,7 @@ alloc = []
 # This feature adds the CachedBlockDevice wrapper around any BlockDevice.
 # Uses the `lru` crate to manage its cache.
 #
-# Implies feature `std`.
+# Implies feature `alloc`.
 cached-block-device = ["alloc", "lru"]
-# Mutually exclusive with the `std` feature, as this would require to disable "lru/nightly" when built with std,
-# but cargo does not provide any way to do conditionnal feature definitions.
-cached-block-device-nightly = ["lru/nightly"]
+# Deprecated, redirects to cached-block-device
+cached-block-device-nightly = ["cached-block-device"]
